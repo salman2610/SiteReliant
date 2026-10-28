@@ -1,0 +1,33 @@
+{
+  "name": "@siteguard/api",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/rate-limit": "^10.2.2",
+    "@siteguard/browser-monitoring": "*",
+    "@siteguard/database": "*",
+    "@siteguard/monitoring": "*",
+    "@siteguard/notifications": "*",
+    "@siteguard/reporting": "*",
+    "@siteguard/security": "*",
+    "@siteguard/shared": "*",
+    "@siteguard/worker": "*",
+    "fastify": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

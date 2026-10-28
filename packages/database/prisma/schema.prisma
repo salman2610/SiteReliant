@@ -1,0 +1,426 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  timezone  String   @default("UTC")
+  plan      String   @default("agency")
+  
+  // White-Label Agency Branding
+  brandLogoUrl        String?  @map("brand_logo_url")
+  brandPrimaryColor   String   @default("#2563eb") @map("brand_primary_color")
+  brandAccentColor    String   @default("#3b82f6") @map("brand_accent_color")
+  customDomain        String?  @unique @map("custom_domain")
+  supportEmail        String?  @map("support_email")
+  portalHeading       String?  @map("portal_heading")
+  portalSubheading    String?  @map("portal_subheading")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships            Membership[]
+  clients                Client[]
+  sites                  Site[]
+  checkPolicies          CheckPolicy[]
+  checkResults           CheckResult[]
+  incidents              Incident[]
+  incidentEvents         IncidentEvent[]
+  alertPolicies          AlertPolicy[]
+  notificationDeliveries NotificationDelivery[]
+  reports                Report[]
+  subscriptions          Subscription[]
+  auditEvents            AuditEvent[]
+  browserMonitors        BrowserMonitor[]
+  browserRuns            BrowserRun[]
+  emailSetting           EmailSetting?
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String
+  passwordHash   String?  @map("password_hash")
+  authProviderId String?  @map("auth_provider_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  memberships Membership[]
+  auditEvents AuditEvent[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  role           String   @default("operator") // owner, admin, operator, viewer
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+model Client {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  slug           String?  @unique
+  contactEmail   String   @map("contact_email")
+  timezone       String   @default("UTC")
+  portalAccessKey String? @default(uuid()) @map("portal_access_key")
+  portalEnabled   Boolean @default(true) @map("portal_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sites        Site[]
+  reports      Report[]
+
+  @@index([organizationId, name])
+  @@map("clients")
+}
+
+model Site {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  clientId       String   @map("client_id")
+  name           String
+  url            String
+  normalizedHost String   @map("normalized_host")
+  status         String   @default("pending") // pending, healthy, degraded, down
+  isActive       Boolean  @default(true) @map("is_active")
+  emailAlertMode String   @default("failure_recovery") @map("email_alert_mode") // failure_recovery, every_check, none
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  checkPolicies   CheckPolicy[]
+  checkResults    CheckResult[]
+  incidents       Incident[]
+  browserMonitors BrowserMonitor[]
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@map("sites")
+}
+
+model CheckPolicy {
+  id                String   @id @default(uuid())
+  organizationId    String   @map("organization_id")
+  siteId            String   @map("site_id")
+  checkType         String   @map("check_type") // http, tls, dns, redirect, headers
+  intervalSeconds   Int      @default(300) @map("interval_seconds")
+  timeoutMs         Int      @default(10000) @map("timeout_ms")
+  failureThreshold  Int      @default(2) @map("failure_threshold")
+  recoveryThreshold Int      @default(2) @map("recovery_threshold")
+  configJson        Json     @default("{}") @map("config_json")
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  checkResults CheckResult[]
+
+  @@index([siteId, checkType])
+  @@map("check_policies")
+}
+
+model CheckResult {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  siteId         String   @map("site_id")
+  policyId       String   @map("policy_id")
+  checkedAt      DateTime @default(now()) @map("checked_at")
+  success        Boolean
+  resultCode     String   @map("result_code") // ok, timeout, dns_error, tls_error, http_error, redirect_error, header_change, ssrf_blocked
+  httpStatus     Int?     @map("http_status")
+  latencyMs      Int      @map("latency_ms")
+  errorCategory  String?  @map("error_category")
+  detailsJson    Json     @default("{}") @map("details_json")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  policy       CheckPolicy  @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, checkedAt(sort: Desc)])
+  @@index([organizationId, checkedAt(sort: Desc)])
+  @@map("check_results")
+}
+
+model Incident {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  siteId         String    @map("site_id")
+  checkType      String    @map("check_type")
+  fingerprint    String
+  severity       String    @default("critical") // critical, warning, info
+  status         String    @default("open")     // open, acknowledged, resolved
+  title          String
+  likelyCause          String?   @map("likely_cause")
+  rootCauseCategory    String?   @map("root_cause_category")
+  recommendedFix       String?   @map("recommended_fix")
+  remediationNotes     String?   @map("remediation_notes")
+  remediationActor     String?   @map("remediation_actor")
+  remediatedAt         DateTime? @map("remediated_at")
+  verifiedAt           DateTime? @map("verified_at")
+  verificationEvidence Json?     @map("verification_evidence")
+  openedAt       DateTime  @default(now()) @map("opened_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                   Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  events                 IncidentEvent[]
+  notificationDeliveries NotificationDelivery[]
+
+  @@index([organizationId, status])
+  @@index([siteId, status])
+  @@map("incidents")
+}
+
+model IncidentEvent {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  incidentId     String   @map("incident_id")
+  eventType      String   @map("event_type") // opened, confirmed, state_change, acknowledged, resolved
+  message        String
+  metadataJson   Json     @default("{}") @map("metadata_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_events")
+}
+
+model AlertPolicy {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  eventType      String   @map("event_type") // incident_opened, incident_resolved, cert_expiry_warning, all
+  channel        String   @default("email")  // email, slack, webhook
+  recipient      String
+  enabled        Boolean  @default(true)
+  settingsJson   Json     @default("{}") @map("settings_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("alert_policies")
+}
+
+model NotificationDelivery {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  incidentId        String    @map("incident_id")
+  eventKey          String    @map("event_key") // opened, resolved, warning
+  recipient         String
+  providerMessageId String?   @map("provider_message_id")
+  status            String    @default("pending") // pending, sent, failed
+  attemptCount      Int       @default(0) @map("attempt_count")
+  lastError         String?   @map("last_error")
+  sentAt            DateTime? @map("sent_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@unique([incidentId, eventKey, recipient])
+  @@map("notification_deliveries")
+}
+
+model Report {
+  id               String    @id @default(uuid())
+  organizationId   String    @map("organization_id")
+  clientId         String    @map("client_id")
+  periodStart      DateTime  @map("period_start")
+  periodEnd        DateTime  @map("period_end")
+  status           String    @default("ready") // pending, generating, ready, failed
+  storageKey       String?   @map("storage_key")
+  contentHash      String?   @map("content_hash")
+  uptimePercentage Float?    @map("uptime_percentage")
+  dataJson         Json      @default("{}") @map("data_json")
+  generatedAt      DateTime  @default(now()) @map("generated_at")
+  sentAt           DateTime? @map("sent_at")
+  errorMessage     String?   @map("error_message")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, periodStart, periodEnd])
+  @@map("reports")
+}
+
+model Subscription {
+  id                     String    @id @default(uuid())
+  organizationId         String    @map("organization_id")
+  provider               String    @default("stripe")
+  providerCustomerId     String?   @map("provider_customer_id")
+  providerSubscriptionId String?   @map("provider_subscription_id")
+  planId                 String    @default("agency") @map("plan_id")
+  status                 String    @default("active")
+  periodEnd              DateTime? @map("period_end")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  actorUserId    String   @map("actor_user_id")
+  action         String
+  resourceType   String   @map("resource_type")
+  resourceId     String   @map("resource_id")
+  metadataJson   Json     @default("{}") @map("metadata_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser    User         @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("audit_events")
+}
+
+model BrowserMonitor {
+  id                String   @id @default(uuid())
+  organizationId    String   @map("organization_id")
+  siteId            String   @map("site_id")
+  name              String
+  description       String?
+  scheduleCron      String?  @map("schedule_cron")
+  intervalSeconds   Int      @default(3600) @map("interval_seconds")
+  workflowJson      Json     @map("workflow_json")
+  timeoutMs         Int      @default(30000) @map("timeout_ms")
+  failureThreshold  Int      @default(2) @map("failure_threshold")
+  recoveryThreshold Int      @default(2) @map("recovery_threshold")
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  runs         BrowserRun[]
+
+  @@index([organizationId, enabled])
+  @@index([siteId])
+  @@map("browser_monitors")
+}
+
+model BrowserRun {
+  id               String    @id @default(uuid())
+  organizationId   String    @map("organization_id")
+  monitorId        String    @map("monitor_id")
+  startedAt        DateTime  @default(now()) @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  status           String    @default("running") // running, passed, failed, timeout, error
+  durationMs       Int       @default(0) @map("duration_ms")
+  failureStepIndex Int?      @map("failure_step_index")
+  failureMessage   String?   @map("failure_message")
+  errorCategory    String?   @map("error_category")
+  summaryJson      Json      @default("{}") @map("summary_json")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monitor      BrowserMonitor     @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  steps        BrowserStep[]
+  artifacts    BrowserArtifact[]
+  assertions   BrowserAssertion[]
+
+  @@index([monitorId, startedAt(sort: Desc)])
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@map("browser_runs")
+}
+
+model BrowserStep {
+  id             String   @id @default(uuid())
+  runId          String   @map("run_id")
+  stepIndex      Int      @map("step_index")
+  action         String   // navigate, click, fill, assert, wait, screenshot
+  targetSelector String?  @map("target_selector")
+  redactedValue  String?  @map("redacted_value")
+  status         String   // passed, failed, skipped
+  durationMs     Int      @default(0) @map("duration_ms")
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  run        BrowserRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  artifacts  BrowserArtifact[]
+  assertions BrowserAssertion[]
+
+  @@index([runId, stepIndex])
+  @@map("browser_steps")
+}
+
+model BrowserAssertion {
+  id            String   @id @default(uuid())
+  runId         String   @map("run_id")
+  stepId        String?  @map("step_id")
+  assertionType String   @map("assertion_type") // element_visible, text_contains, url_matches, response_status, no_console_errors
+  expectedValue String   @map("expected_value")
+  actualValue   String?  @map("actual_value")
+  passed        Boolean
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  run  BrowserRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step BrowserStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@map("browser_assertions")
+}
+
+model BrowserArtifact {
+  id           String   @id @default(uuid())
+  runId        String   @map("run_id")
+  stepId       String?  @map("step_id")
+  artifactType String   @map("artifact_type") // screenshot, console_log, network_har, error_trace
+  storageKey   String?  @map("storage_key")
+  contentHash  String?  @map("content_hash")
+  metadataJson Json     @default("{}") @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  run  BrowserRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step BrowserStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  @@index([runId, artifactType])
+  @@map("browser_artifacts")
+}
+
+model EmailSetting {
+  id                String    @id @default(uuid())
+  organizationId    String    @unique @map("organization_id")
+  provider          String    @default("smtp") // smtp, sendgrid, postmark, ses, mock
+  smtpHost          String?   @map("smtp_host")
+  smtpPort          Int       @default(587) @map("smtp_port")
+  smtpEncryption    String    @default("tls") // tls, ssl, none
+  senderName        String    @default("SiteGuard Alerts") @map("sender_name")
+  senderEmail       String    @default("alerts@siteguard.io") @map("sender_email")
+  replyToEmail      String?   @map("reply_to_email")
+  smtpUsername      String?   @map("smtp_username")
+  smtpPasswordEnc   String?   @map("smtp_password_enc") // AES-256-GCM encrypted
+  apiKeyEnc         String?   @map("api_key_enc")       // AES-256-GCM encrypted
+  status            String    @default("untested")     // untested, verified, error
+  lastTestedAt      DateTime? @map("last_tested_at")
+  lastError         String?   @map("last_error")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("email_settings")
+}
+

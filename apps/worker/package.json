@@ -1,0 +1,26 @@
+{
+  "name": "@siteguard/worker",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@siteguard/browser-monitoring": "*",
+    "@siteguard/database": "*",
+    "@siteguard/monitoring": "*",
+    "@siteguard/notifications": "*",
+    "@siteguard/reporting": "*",
+    "@siteguard/security": "*",
+    "@siteguard/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

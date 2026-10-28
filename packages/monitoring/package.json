@@ -1,0 +1,19 @@
+{
+  "name": "@siteguard/monitoring",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b -w",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@siteguard/shared": "*",
+    "@siteguard/security": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3"
+  }
+}
